@@ -86,18 +86,17 @@ run_cinegrader()
 
 ## How It Works
 
-```
-Target Image  ──►  rgb_to_lab()  ──►  pixels_to_matrix()  ──►  kmeans(k)
-                                                                     │
-Reference Image ──►  same pipeline  ──►  k reference centroids       │
-                                                                     ▼
-                             1-NN centroid match  (apply_grade step 3)
-                                                                     │
-                                                                     ▼
-                         Δ = ref_centroid − target_centroid per pixel
-                                                                     │
-                                                                     ▼
-                    Shifted LAB pixels  ──►  lab_to_rgb()  ──►  cimg output
+```mermaid
+flowchart TB
+    A["🎯 Target Image"]    -->|rgb_to_lab + pixels_to_matrix + kmeans| B(["k Target Centroids"])
+    C["🎬 Reference Image"] -->|same pipeline| D(["k Reference Centroids"])
+
+    B --> E["1-NN Centroid Match\n— apply_grade step 3 —"]
+    D --> E
+
+    E --> F["Δ = ref_centroid − target_centroid\nper cluster"]
+    F --> G["Shift all pixels in LAB space"]
+    G -->|lab_to_rgb| H[/"✅  Graded cimg Output"/]
 ```
 
 All core algorithms operate in **CIE LAB** colour space because Euclidean distances in LAB correspond to human-perceived colour difference (ΔE = 1 ≈ one just-noticeable difference), making k-means clusters perceptually meaningful rather than merely numerically convenient.
