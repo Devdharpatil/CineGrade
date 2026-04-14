@@ -26,8 +26,9 @@ Every transformation is powered by a real statistical algorithm: **k-means clust
 
 ## Prerequisites
 
-CineGrade depends on `imager`, which requires the **X11 / XQuartz** graphics library.
+CineGrade depends on `imager`, which requires the **X11 / XQuartz** graphics library on UNIX systems.
 
+- **Windows:** No extra setup required! Just run the R code below.
 - **macOS:** Install [XQuartz](https://www.xquartz.org/) first, then restart R.
 - **Linux:** `sudo apt-get install libx11-dev libglu1-mesa-dev`
 
