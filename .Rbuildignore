@@ -1,0 +1,5 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.agent$
+^Helper Files$
+^.*\.DS_Store$

@@ -1,0 +1,271 @@
+---
+title: "Introduction to CineGrade"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to CineGrade}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse  = TRUE,
+  comment   = "#>",
+  fig.width  = 7,
+  fig.height = 5,
+  eval       = FALSE   # All chunks eval=FALSE for CRAN/R CMD CHECK safety
+)
+library(CineGrade)
+
+# Convenience: paths to built-in sample images
+portrait <- system.file("extdata", "sample_portrait.jpg", package = "CineGrade")
+wes      <- system.file("extdata", "preset_wes.jpg",      package = "CineGrade")
+noir     <- system.file("extdata", "preset_noir.jpg",     package = "CineGrade")
+vintage  <- system.file("extdata", "preset_vintage.jpg",  package = "CineGrade")
+anime    <- system.file("extdata", "preset_anime.jpg",    package = "CineGrade")
+```
+
+## What is CineGrade?
+
+**CineGrade** extracts the cinematic colour grade from any reference image and
+mathematically transfers it to a target photo — making your photo look like a
+scene from a Wes Anderson film, a neon-noir thriller, or any style you choose.
+
+Every transformation is powered by a technique from the MTH 209 / MTH 210
+curriculum:
+
+| Technique | Function(s) |
+|:---|:---|
+| **k-means clustering** in LAB colour space | `extract_grade()`, `apply_grade()`, `stylize()` |
+| **1-nearest-neighbour matching** (kNN) | `apply_grade()` centroid matching step |
+| **Principal Component Analysis** (PCA) | `palette_pca()` |
+| **UMAP** dimensionality reduction | `color_universe()` |
+| **Euclidean distance** in LAB (ΔE) | `compare_grades()` |
+| **Matrix transformation** (CVD) | `simulate_colorblind()` |
+
+The package also ships a full interactive **Shiny dashboard** (`run_cinegrader()`)
+for real-time before/after preview and download.
+
+---
+
+## Why LAB colour space?
+
+All core algorithms run in **CIE LAB** (L\*, a\*, b\*) rather than RGB because:
+
+- Euclidean distance in LAB ≈ human-perceived colour difference
+  (ΔE = 1 ≈ one just-noticeable difference)
+- k-means minimises within-cluster sum of squares — in LAB this corresponds
+  directly to *perceptual* homogeneity, not just numeric similarity
+
+The two utility functions `rgb_to_lab()` and `lab_to_rgb()` handle all
+conversions internally via the `colorspace` package.
+
+---
+
+## 1. Extracting a Colour Grade — `extract_grade()`
+
+`extract_grade()` runs k-means on a random sample of pixels in LAB space and
+returns the **k cluster centres** as the image's compact colour signature.
+
+```{r extract}
+grade <- extract_grade(wes, k = 8)
+print(grade)
+```
+
+The `CineGrade` S3 object carries:
+
+- `$centers` — k × 3 matrix of LAB centroids (sorted by L* in `palette_pca`)
+- `$labels`  — integer vector of per-pixel cluster assignments
+- `$k`       — the k used
+- `$colorspace` — always `"LAB"`
+
+**Why k-means?** Each row of `$centers` is a "prototype" colour that
+summarises a region of the image's colour palette. With k = 8, the entire
+colour story of a film still is compressed to 8 numbers in 3D LAB space.
+
+---
+
+## 2. Transferring a Colour Grade — `apply_grade()`
+
+`apply_grade()` is where the magic happens. It implements a four-step
+**centroid-shift algorithm**:
+
+1. Extract k reference centroids (from the reference image).
+2. Extract k target centroids **and** per-pixel labels (from the target).
+3. **1-NN match**: for each of the k target centroids, find the nearest
+   reference centroid in LAB Euclidean space.
+4. **Pixel shift**: for every pixel assigned to target cluster *j*, add the
+   delta Δ_j = ref_centroid[match(j)] − target_centroid[j] to its LAB values.
+
+```{r apply}
+result <- apply_grade(portrait, wes, k = 8)
+
+# Display side by side
+par(mfrow = c(1, 2), mar = c(0, 0, 1.5, 0))
+plot(CineGrade:::load_image(portrait), axes = FALSE)
+title("Original", col.main = "grey40")
+plot(result, axes = FALSE)
+title("Wes Anderson grade", col.main = "grey40")
+par(mfrow = c(1, 1))
+```
+
+You can also feed a **pre-computed `CineGrade` object** as the reference to
+avoid re-running k-means:
+
+```{r apply_precomputed, eval = FALSE}
+wes_grade <- extract_grade(wes, k = 8)
+result2   <- apply_grade(portrait, wes_grade, k = 8)
+```
+
+---
+
+## 3. Measuring Style Distance — `compare_grades()`
+
+`compare_grades()` quantifies how different two images' colour styles are,
+using the **symmetric average Hausdorff distance** in LAB space:
+
+$$d(G_1, G_2) = \frac{1}{2}\left[\frac{1}{k}\sum_i \min_j\|c^1_i - c^2_j\|_2 + \frac{1}{k}\sum_j \min_i\|c^1_i - c^2_j\|_2\right]$$
+
+The result is in **ΔE units** — the same perceptual scale as CIEDE:
+
+| Score | Meaning |
+|:---|:---|
+| 0 | Identical colour grade |
+| < 5 | Very similar (subtle difference) |
+| 5 – 15 | Noticeable but related styles |
+| 15 – 30 | Clearly different styles |
+| > 30 | Strongly different (e.g. noir vs. anime) |
+
+```{r compare}
+d_wes_noir <- compare_grades(wes, noir,    k = 8)
+d_wes_vint <- compare_grades(wes, vintage, k = 8)
+
+cat("Wes vs Noir:    ΔE =", round(d_wes_noir, 2), "\n")
+cat("Wes vs Vintage: ΔE =", round(d_wes_vint, 2), "\n")
+
+print(d_wes_noir)
+```
+
+---
+
+## 4. Visualising the Colour Universe — `color_universe()`
+
+`color_universe()` takes a random sample of pixels, embeds their LAB
+coordinates in 2D using **UMAP**, and renders each pixel as a coloured dot at
+its 2D position.  The result is a visual **colour fingerprint**:
+
+```{r universe, fig.height = 5}
+p_wes  <- color_universe(wes,  n_pixels = 3000, title = "Wes Anderson",  seed = 1)
+p_noir <- color_universe(noir, n_pixels = 3000, title = "Noir",          seed = 1)
+print(p_wes)
+```
+
+- Sunset/warm images → tight warm orange-yellow clouds
+- Noir → dense dark scatter near the bottom-left
+- Anime → wide, high-chroma scatter with vivid outliers
+
+---
+
+## 5. Comparing Styles Across Images — `palette_pca()`
+
+`palette_pca()` builds a feature matrix where each image is represented by
+its **L*-sorted k-means centroids** (flattened to a 3k-dimensional vector),
+then runs **PCA** to project all images into a 2D style space.
+
+**Why sort centroids?**  k-means label ordering is arbitrary — centroid 1
+from image A is not comparable to centroid 1 from image B.  Sorting by L*
+(dark → bright) creates a canonical ordering so that the PCA features are
+meaningfully comparable across images.
+
+```{r pca, fig.height = 5}
+images <- list(
+  "Wes Anderson" = wes,
+  "Noir"         = noir,
+  "Vintage"      = vintage,
+  "Anime"        = anime,
+  "Portrait"     = portrait
+)
+p <- palette_pca(images, k = 6)
+print(p)
+```
+
+Each point is filled with the image's **dominant (highest-L\*)** cluster
+colour, labelled with the image name.  The axis labels show the proportion of
+variance explained by each principal component.
+
+---
+
+## 6. Artistic Stylization — `stylize()`
+
+`stylize()` applies five artistic modes, all based on k-means quantization:
+
+```{r stylize, fig.height = 4}
+poster <- stylize(portrait, mode = "poster", k = 8)
+noir_s <- stylize(portrait, mode = "noir")
+anime_s<- stylize(portrait, mode = "anime",  sat_scale = 2.0)
+pixel_s<- stylize(portrait, mode = "pixel",  k = 6, block_size = 16)
+
+par(mfrow = c(2, 2), mar = c(0, 0, 1.5, 0))
+plot(poster,  axes = FALSE); title("poster",       col.main = "grey30")
+plot(noir_s,  axes = FALSE); title("noir",         col.main = "grey30")
+plot(anime_s, axes = FALSE); title("anime",        col.main = "grey30")
+plot(pixel_s, axes = FALSE); title("pixel (16px)", col.main = "grey30")
+par(mfrow = c(1, 1))
+```
+
+| Mode | Technique | Effect |
+|:---|:---|:---|
+| `"poster"` | k-means LAB snap | Flat graphic / screen-print |
+| `"pixel"` | Downsample → snap → upsample | Retro pixel-art |
+| `"anime"` | Chroma-boosted LAB snap | Bold high-saturation colours |
+| `"noir"` | Desaturate + 4-cluster snap | Black-and-white with cool tint |
+| `"vintage"` | `apply_grade()` + built-in preset | Warm faded film look |
+
+---
+
+## 7. Colour Vision Deficiency Simulation — `simulate_colorblind()`
+
+`simulate_colorblind()` applies standard **Machado et al. (2009)** CVD
+transformation matrices in linear sRGB space:
+
+$$C_{\text{out}} = \left(\text{clamp}\left(C_{\text{in}}^{2.2} \cdot M_{\text{CVD}}^\top\right)\right)^{1/2.2}$$
+
+```{r colorblind, fig.height = 3}
+deut <- simulate_colorblind(portrait, type = "deuteranopia")
+prot <- simulate_colorblind(portrait, type = "protanopia")
+
+par(mfrow = c(1, 3), mar = c(0, 0, 1.5, 0))
+plot(CineGrade:::load_image(portrait), axes = FALSE); title("Original")
+plot(deut, axes = FALSE); title("Deuteranopia (green-blind)")
+plot(prot, axes = FALSE); title("Protanopia (red-blind)")
+par(mfrow = c(1, 1))
+```
+
+Use this to check whether your colour-graded output remains interpretable for
+viewers with impaired colour vision — an important **accessibility check**
+before sharing any colour-critical work.
+
+---
+
+## 8. Interactive Dashboard — `run_cinegrader()`
+
+```{r shiny, eval = FALSE}
+run_cinegrader()
+```
+
+The Shiny app provides:
+
+- **Target image upload** (JPG/PNG)
+- **Reference**: built-in film presets (Wes Anderson, Noir, Vintage, Anime)
+  **or** upload your own
+- **k slider** (3–20)
+- **Before / After split-screen** with live ΔE score
+- **Download** the graded image as JPEG
+
+---
+
+## Session Info
+
+```{r session, eval = TRUE}
+sessionInfo()
+```

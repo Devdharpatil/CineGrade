@@ -1,0 +1,34 @@
+# ── R session artifacts ──────────────────────────────────────────────────────
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+
+# ── Build outputs ─────────────────────────────────────────────────────────────
+*.tar.gz
+*.zip
+/doc/
+
+# ── R CMD check ───────────────────────────────────────────────────────────────
+/*.Rcheck/
+
+# ── Vignettes (built artefacts, not source) ───────────────────────────────────
+vignettes/*.html
+vignettes/*.pdf
+inst/doc/
+
+# ── pkgdown site (if ever generated) ─────────────────────────────────────────
+docs/
+
+# ── macOS system files ────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ── Internal planning & tooling (not part of the public package) ──────────────
+Helper Files/
+.agent/
+
+# ── Temp / editor scratch files ───────────────────────────────────────────────
+*.tmp
+*~

@@ -1,0 +1,32 @@
+Package: CineGrade
+Type: Package
+Title: Cinematic Color Grading and Style Transfer for Images
+Version: 0.1.0
+Authors@R: person("Devdhar", "Patil",
+    email = "devdharup22@iitk.ac.in",
+    role  = c("aut", "cre"))
+Description: Extracts cinematic color grades from reference images using
+    k-means clustering in LAB perceptual color space and transfers them
+    to any target image. Includes a 1-nearest-neighbour centroid-shift
+    color transfer algorithm, PCA-based exploration of color style across
+    image collections, UMAP visualization of color distributions,
+    artistic stylization presets (poster, pixel, anime, noir, vintage),
+    color vision deficiency simulation, and an interactive Shiny dashboard.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    imager,
+    uwot,
+    ggplot2,
+    shiny,
+    colorspace,
+    methods,
+    grDevices,
+    graphics,
+    stats
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+RoxygenNote: 7.3.3
